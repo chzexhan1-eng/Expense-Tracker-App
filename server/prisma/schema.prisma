@@ -1,0 +1,122 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                    String                 @id @default(uuid())
+  email                 String                 @unique
+  password              String
+  name                  String
+  currency              String                 @default("USD")
+  theme                 String                 @default("light")
+  avatar                String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  
+  accounts              Account[]
+  categories            Category[]
+  transactions          Transaction[]
+  recurringTransactions RecurringTransaction[]
+  notifications         Notification[]
+  savingsGoals          SavingsGoal[]
+}
+
+model Account {
+  id           String        @id @default(uuid())
+  name         String
+  type         String        // CASH, BANK, CREDIT_CARD, DIGITAL_WALLET
+  balance      Float         @default(0.0)
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  recurring    RecurringTransaction[]
+}
+
+model Category {
+  id                    String                 @id @default(uuid())
+  name                  String
+  type                  String                 // INCOME, EXPENSE
+  color                 String                 @default("#808080")
+  icon                  String                 @default("Tag")
+  isCustom              Boolean                @default(false)
+  budgetLimit           Float?
+  userId                String
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions          Transaction[]
+  recurringTransactions RecurringTransaction[]
+}
+
+model Transaction {
+  id            String   @id @default(uuid())
+  amount        Float
+  date          DateTime
+  type          String   // INCOME, EXPENSE
+  description   String
+  paymentMethod String   @default("CASH") // CASH, CARD, TRANSFER, WALLET, etc.
+  notes         String?
+  receiptUrl    String?
+  isRecurring   Boolean  @default(false)
+  
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime @default(now())
+}
+
+model RecurringTransaction {
+  id            String   @id @default(uuid())
+  amount        Float
+  type          String   // INCOME, EXPENSE
+  description   String
+  interval      String   // DAILY, WEEKLY, MONTHLY, YEARLY
+  startDate     DateTime
+  nextDueDate   DateTime
+  isActive      Boolean  @default(true)
+  
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String   // BUDGET_ALERT, BILL_REMINDER, SUCCESS_CONFIRMATION
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SavingsGoal {
+  id           String    @id @default(uuid())
+  name         String
+  targetAmount Float
+  currentAmount Float     @default(0.0)
+  deadline     DateTime?
+  
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt    DateTime  @default(now())
+}

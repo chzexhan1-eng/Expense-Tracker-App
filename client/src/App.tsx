@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider, useToast } from './components/Toast';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -9,34 +9,153 @@ import { Budgets } from './components/Budgets';
 import { Reports } from './components/Reports';
 import { AICoach } from './components/AICoach';
 import { Settings } from './components/Settings';
-import { Lock, Mail, User as UserIcon, ArrowRight, Eye, EyeOff, Sparkles, CreditCard } from 'lucide-react';
+import { Lock, Mail, User as UserIcon, ArrowRight, Eye, EyeOff, Sparkles, TrendingUp } from 'lucide-react';
+
+/* â”€â”€â”€ Money symbols floating in background â”€â”€â”€ */
+const MONEY_SYMBOLS = ['$', 'â‚¬', 'Â£', 'Â¥', 'â‚¿', '$', '$', 'â‚¬'];
+const COINS = [
+  { top: '8%',  left: '6%',  size: 64,  delay: '0s',   duration: '14s' },
+  { top: '15%', left: '88%', size: 48,  delay: '2s',   duration: '18s' },
+  { top: '55%', left: '4%',  size: 80,  delay: '4s',   duration: '12s' },
+  { top: '72%', left: '91%', size: 56,  delay: '1s',   duration: '16s' },
+  { top: '35%', left: '93%', size: 40,  delay: '6s',   duration: '20s' },
+  { top: '85%', left: '12%', size: 72,  delay: '3s',   duration: '15s' },
+  { top: '28%', left: '2%',  size: 44,  delay: '8s',   duration: '22s' },
+  { top: '65%', left: '82%', size: 60,  delay: '5s',   duration: '17s' },
+];
+
+/* â”€â”€â”€ Rising chart line (SVG sparkline in background) â”€â”€â”€ */
+const ChartBg: React.FC = () => (
+  <svg
+    className="absolute inset-0 w-full h-full opacity-[0.06] pointer-events-none"
+    viewBox="0 0 1440 900"
+    preserveAspectRatio="none"
+  >
+    <defs>
+      <linearGradient id="chartGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%"   stopColor="#10b981" stopOpacity="0" />
+        <stop offset="40%"  stopColor="#10b981" stopOpacity="1" />
+        <stop offset="100%" stopColor="#f59e0b" stopOpacity="1" />
+      </linearGradient>
+    </defs>
+    {/* Main rising line */}
+    <polyline
+      points="0,820 120,780 240,750 360,700 480,640 600,570 720,490 840,420 960,340 1080,260 1200,190 1320,120 1440,60"
+      fill="none"
+      stroke="url(#chartGrad)"
+      strokeWidth="4"
+    />
+    {/* Secondary noisy line */}
+    <polyline
+      points="0,860 100,830 200,800 340,760 420,720 540,670 660,600 780,530 900,460 1020,370 1140,290 1280,200 1440,130"
+      fill="none"
+      stroke="#10b981"
+      strokeWidth="2"
+      strokeDasharray="12 8"
+    />
+    {/* Candlestick bars */}
+    {[80,200,320,440,560,680,800,920,1040,1160,1280,1380].map((x, i) => {
+      const h = 40 + (i * 18);
+      const y = 840 - h - (i * 60);
+      const bullish = i % 3 !== 1;
+      return (
+        <g key={x}>
+          <rect x={x - 10} y={y} width={20} height={h}
+            fill={bullish ? '#10b981' : '#ef4444'} opacity={0.5} rx={2} />
+          <line x1={x} y1={y - 12} x2={x} y2={y} stroke={bullish ? '#10b981' : '#ef4444'} strokeWidth={2} opacity={0.5} />
+          <line x1={x} y1={y + h} x2={x} y2={y + h + 12} stroke={bullish ? '#10b981' : '#ef4444'} strokeWidth={2} opacity={0.5} />
+        </g>
+      );
+    })}
+  </svg>
+);
+
+const MoneyBackground: React.FC<{ mouseX: number; mouseY: number }> = ({ mouseX, mouseY }) => (
+  <div
+    className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none"
+    style={{ transform: `perspective(1400px) rotateX(${mouseY * -5}deg) rotateY(${mouseX * 5}deg)` }}
+  >
+    {/* Base gradient */}
+    <div className="absolute inset-0 bg-gradient-to-br from-[#020d08] via-[#030f06] to-[#070414]" />
+
+    {/* SVG chart backdrop */}
+    <ChartBg />
+
+    {/* Green aurora top-left */}
+    <div className="absolute -top-32 -left-32 w-[600px] h-[600px] rounded-full bg-gradient-to-br from-emerald-500/25 to-green-600/10 blur-[120px] animate-float-blob" />
+    {/* Gold aurora bottom-right */}
+    <div className="absolute -bottom-32 -right-32 w-[700px] h-[700px] rounded-full bg-gradient-to-tl from-amber-400/20 to-yellow-500/10 blur-[130px] animate-float-blob-reverse" />
+    {/* Purple premium mid accent */}
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] rounded-full bg-gradient-to-r from-violet-600/10 to-emerald-500/10 blur-[100px] animate-float-blob" />
+
+    {/* Floating gold coins with $ symbols */}
+    {COINS.map((c, i) => (
+      <div
+        key={i}
+        className="absolute flex items-center justify-center rounded-full font-black animate-float-coin"
+        style={{
+          top: c.top,
+          left: c.left,
+          width: c.size,
+          height: c.size,
+          fontSize: c.size * 0.38,
+          animationDelay: c.delay,
+          animationDuration: c.duration,
+          background: `radial-gradient(circle at 35% 30%, #fde68a, #f59e0b 55%, #b45309)`,
+          boxShadow: `0 0 ${c.size * 0.4}px rgba(245,158,11,0.35), inset -4px -4px 10px rgba(0,0,0,0.4), inset 4px 4px 10px rgba(255,255,255,0.25)`,
+          color: 'rgba(120,53,15,0.85)',
+          transform: `translate3d(${mouseX * (i % 2 === 0 ? 8 : -8)}px, ${mouseY * (i % 2 === 0 ? 6 : -6)}px, 0)`,
+          transition: 'transform 0.4s ease-out',
+          opacity: 0.65,
+        }}
+      >
+        {MONEY_SYMBOLS[i]}
+      </div>
+    ))}
+
+    {/* Money rain streaks */}
+    {[10, 22, 35, 48, 60, 73, 85, 95].map((left, i) => (
+      <div
+        key={i}
+        className="absolute top-0 w-px animate-money-rain"
+        style={{
+          left: `${left}%`,
+          height: `${60 + i * 10}px`,
+          background: 'linear-gradient(to bottom, transparent, #10b981, transparent)',
+          animationDelay: `${i * 1.1}s`,
+          animationDuration: `${4 + i * 0.7}s`,
+          opacity: 0.18,
+        }}
+      />
+    ))}
+
+    {/* Shimmering gold grid lines */}
+    <div className="absolute inset-0 opacity-[0.04]"
+      style={{ backgroundImage: 'linear-gradient(rgba(245,158,11,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(245,158,11,0.5) 1px, transparent 1px)', backgroundSize: '80px 80px' }}
+    />
+  </div>
+);
 
 const MainAppContent: React.FC = () => {
   const { isAuthenticated, isLoading, login, register } = useAuth();
   const { showToast } = useToast();
-  
-  // Tab Routing state
+
   const [activeTab, setActiveTab] = useState('dashboard');
-  
-  // Auth Screen state
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
-
-  // Auth Inputs
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-
-  // 3D Parallax Mouse Tracking
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const { innerWidth, innerHeight } = window;
-      const x = (e.clientX - innerWidth / 2) / (innerWidth / 2); // range -1 to 1
-      const y = (e.clientY - innerHeight / 2) / (innerHeight / 2); // range -1 to 1
-      setMousePos({ x, y });
+      setMousePos({
+        x: (e.clientX - innerWidth / 2) / (innerWidth / 2),
+        y: (e.clientY - innerHeight / 2) / (innerHeight / 2),
+      });
     };
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
@@ -60,356 +179,184 @@ const MainAppContent: React.FC = () => {
     }
   };
 
-  // Helper to prefill demo user credentials for ease of use
   const prefillDemoUser = () => {
     setEmail('user@example.com');
     setPassword('password123');
-    showToast('Prefilled demo credentials', 'info');
+    showToast('Demo credentials filled!', 'info');
   };
 
+  /* â”€â”€ Loading screen â”€â”€ */
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-tr from-slate-50 via-slate-100 to-indigo-50/10 dark:from-[#0d0d0d] dark:via-[#141414] dark:to-[#171325] flex items-center justify-center">
+      <div className="min-h-screen bg-[#020d08] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 animate-scale-up">
-          <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-stripe-primary to-purple-500 flex items-center justify-center text-white font-bold shadow-xl animate-bounce relative">
-            <CreditCard className="h-8 w-8 animate-pulse" />
+          <div className="h-16 w-16 rounded-2xl flex items-center justify-center text-white shadow-xl animate-bounce relative"
+            style={{ background: 'linear-gradient(135deg,#10b981,#f59e0b)' }}>
+            <TrendingUp className="h-8 w-8 animate-pulse" />
             <div className="absolute inset-0 rounded-2xl border-4 border-white/20 animate-ping" />
           </div>
-          <p className="text-xs text-notion-text-muted-light dark:text-notion-text-muted-dark font-bold tracking-widest uppercase animate-pulse">Initializing Antigravity...</p>
+          <p className="text-xs text-emerald-400 font-bold tracking-widest uppercase animate-pulse">Loading Vault...</p>
         </div>
       </div>
     );
   }
 
-  // Non-authenticated view (Login / Register)
+  /* â”€â”€ Login / Register â”€â”€ */
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-[#030208] text-white transition-all duration-300 relative overflow-hidden">
-        
-        {/* Dynamic 3D Cosmic Space Solar System Parallax Backdrop (z-0) */}
-        <div 
-          className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none transition-transform duration-300 ease-out scale-110"
-          style={{
-            transform: `perspective(1200px) rotateX(${mousePos.y * -8}deg) rotateY(${mousePos.x * 8}deg)`,
-          }}
-        >
-          {/* Base Solar System Image (from shared images.webp) */}
-          <div 
-            className="absolute inset-0 bg-cover bg-center opacity-45 mix-blend-screen"
-            style={{
-              backgroundImage: "url('/solar_system.webp')",
-            }}
-          />
-          {/* Dark space blend overlay */}
-          <div className="absolute inset-0 bg-[#030208]/70 mix-blend-multiply" />
+      <div className="min-h-screen flex items-center justify-center p-4 text-white relative overflow-hidden">
+        <MoneyBackground mouseX={mousePos.x} mouseY={mousePos.y} />
 
-          {/* Nebula Cosmic Dust */}
-          <div className="absolute top-[-15%] left-[-15%] w-[450px] h-[450px] md:w-[600px] md:h-[600px] rounded-full bg-gradient-to-tr from-[#635bff]/20 to-[#8b5cf6]/14 blur-[90px] md:blur-[110px] animate-float-blob" />
-          <div className="absolute bottom-[-15%] right-[-15%] w-[450px] h-[450px] md:w-[650px] md:h-[650px] rounded-full bg-gradient-to-br from-[#00d4b2]/15 to-[#635bff]/18 blur-[100px] md:blur-[120px] animate-float-blob-reverse" />
-
-          {/* Central Sun in Parallax */}
-          <div 
-            className="absolute top-[50%] left-[50%] w-28 h-28 rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-300 blur-[2px] shadow-[0_0_70px_20px_rgba(245,158,11,0.55)] animate-pulse transition-transform duration-500 ease-out"
-            style={{
-              transform: `translate3d(${mousePos.x * -12}px, ${mousePos.y * -12}px, 0) translate(-50%, -50%)`,
-            }}
-          />
-
-          {/* 3D concentric Orbit Lines matching solar system rings */}
-          <div className="solar-orbit solar-orbit-1" />
-          <div className="solar-orbit solar-orbit-2" />
-          <div className="solar-orbit solar-orbit-3" />
-          <div className="solar-orbit solar-orbit-4" />
-          <div className="asteroid-belt" />
-          <div className="solar-orbit solar-orbit-6" />
-          <div className="solar-orbit solar-orbit-7" />
-          <div className="solar-orbit solar-orbit-8" />
-
-          {/* Planets aligned on their orbits with independent 3D parallax offsets */}
-          {/* 1. Mercury */}
-          <div 
-            className="absolute top-[48%] left-[45%] w-2 h-2 rounded-full bg-gray-400 shadow-sm animate-pulse transition-transform duration-500 ease-out"
-            style={{ transform: `translate3d(${mousePos.x * -5}px, ${mousePos.y * -5}px, 10px)` }}
-          />
-          {/* 2. Venus */}
-          <div 
-            className="absolute top-[45%] left-[41%] w-4 h-4 rounded-full bg-gradient-to-tr from-amber-600 to-orange-400 shadow-sm animate-float-blob transition-transform duration-500 ease-out"
-            style={{ transform: `translate3d(${mousePos.x * -2}px, ${mousePos.y * -2}px, 20px)` }}
-          />
-          {/* 3. Earth */}
-          <div 
-            className="absolute top-[41%] left-[36%] w-5 h-5 rounded-full bg-gradient-to-tr from-blue-600 to-emerald-400 shadow-md animate-float-blob-reverse transition-transform duration-500 ease-out"
-            style={{ transform: `translate3d(${mousePos.x * 3}px, ${mousePos.y * 3}px, 30px)` }}
-          />
-          {/* 4. Mars */}
-          <div 
-            className="absolute top-[38%] left-[32%] w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-red-600 to-orange-500 shadow-sm animate-float-blob transition-transform duration-500 ease-out"
-            style={{ transform: `translate3d(${mousePos.x * 7}px, ${mousePos.y * 7}px, 40px)` }}
-          />
-          {/* 5. Jupiter */}
-          <div 
-            className="absolute top-[28%] left-[25%] w-12 h-12 rounded-full bg-gradient-to-tr from-amber-800 via-orange-600 to-yellow-300 shadow-md animate-float-blob transition-transform duration-500 ease-out"
-            style={{ transform: `translate3d(${mousePos.x * 12}px, ${mousePos.y * 12}px, 50px)` }}
-          />
-          {/* 6. Saturn with 3D Rings */}
-          <div 
-            className="absolute top-[18%] left-[15%] w-16 h-16 saturn-container animate-float-blob-reverse transition-transform duration-500 ease-out"
-            style={{ transform: `translate3d(${mousePos.x * 18}px, ${mousePos.y * 18}px, 60px)` }}
-          >
-            <div className="saturn-globe" />
-            <div className="saturn-ring" />
-          </div>
-          {/* 7. Uranus */}
-          <div 
-            className="absolute top-[8%] left-[8%] w-10 h-10 cosmic-planet-cyan animate-float-blob transition-transform duration-500 ease-out"
-            style={{ transform: `translate3d(${mousePos.x * 24}px, ${mousePos.y * 24}px, 70px)` }}
-          />
-          {/* 8. Neptune */}
-          <div 
-            className="absolute top-[2%] left-[3%] w-8 h-8 rounded-full bg-gradient-to-tr from-blue-900 to-indigo-600 shadow-md animate-float-blob-reverse transition-transform duration-500 ease-out"
-            style={{ transform: `translate3d(${mousePos.x * 30}px, ${mousePos.y * 30}px, 80px)` }}
-          />
-
-          {/* Shooting Comets with delays */}
-          <div className="shooting-comet top-[15%] right-[25%]" />
-          <div className="shooting-comet top-[40%] right-[10%]" style={{ animationDelay: '5s' }} />
-          <div className="shooting-comet top-[65%] right-[30%]" style={{ animationDelay: '9s' }} />
-        </div>
-
-        {/* Content wrapper with relative z-10 stack to render above background */}
         <div className="w-full max-w-md flex flex-col gap-6 animate-scale-up relative z-10">
-          
-          {/* Logo Brand Header */}
-          <div className="flex flex-col items-center text-center gap-2">
-            <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-stripe-primary to-purple-500 flex items-center justify-center text-white font-bold shadow-premium animate-pulse-glow">
-              <CreditCard className="h-6 w-6" />
+
+          {/* Logo */}
+          <div className="flex flex-col items-center text-center gap-3">
+            <div className="h-16 w-16 rounded-2xl flex items-center justify-center text-white shadow-2xl animate-pulse-glow-gold relative"
+              style={{ background: 'linear-gradient(135deg,#059669,#10b981,#f59e0b)' }}>
+              <TrendingUp className="h-8 w-8" />
             </div>
             <div>
-              <h1 className="font-extrabold text-2xl tracking-tight text-white">Antigravity</h1>
-              <p className="text-xs text-purple-300 font-semibold mt-0.5">SaaS Expense Tracker & Financial Coach</p>
+              <h1 className="font-extrabold text-3xl tracking-tight bg-gradient-to-r from-emerald-400 via-yellow-300 to-amber-400 bg-clip-text text-transparent">
+                WealthVault
+              </h1>
+              <p className="text-xs text-emerald-400/80 font-semibold mt-1 tracking-widest uppercase">
+                Smart Expense Tracker & AI Coach
+              </p>
             </div>
           </div>
 
-          {/* Form Card */}
-          <div className="cyber-glass-panel cyber-corners p-6 md:p-8 rounded-2xl flex flex-col gap-5 text-white">
-            <div className="flex flex-col gap-1 border-b border-notion-border-light dark:border-notion-border-dark pb-3">
-              <h2 className="font-bold text-lg tracking-tight">
-                {authMode === 'login' ? 'Sign in to your account' : 'Create a new account'}
+          {/* Stats badges */}
+          <div className="flex justify-center gap-3 flex-wrap">
+            {[
+              { label: 'Savings', value: '+24%', color: '#10b981' },
+              { label: 'Budgets', value: '12 Active', color: '#f59e0b' },
+              { label: 'AI Insights', value: 'Live', color: '#a78bfa' },
+            ].map(s => (
+              <div key={s.label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
+                style={{ background: `${s.color}18`, border: `1px solid ${s.color}40`, color: s.color }}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: s.color }} />
+                {s.value} {s.label}
+              </div>
+            ))}
+          </div>
+
+          {/* Form card */}
+          <div className="rounded-2xl p-6 md:p-8 flex flex-col gap-5 animate-fade-in-up"
+            style={{
+              background: 'rgba(2,20,10,0.72)',
+              backdropFilter: 'blur(32px)',
+              border: '1px solid rgba(16,185,129,0.25)',
+              boxShadow: '0 0 60px rgba(16,185,129,0.08), 0 25px 50px rgba(0,0,0,0.5)',
+            }}>
+
+            {/* Glowing top bar */}
+            <div className="h-0.5 w-full rounded-full mb-1"
+              style={{ background: 'linear-gradient(90deg,transparent,#10b981,#f59e0b,transparent)' }} />
+
+            <div className="flex flex-col gap-1">
+              <h2 className="font-bold text-xl tracking-tight text-white">
+                {authMode === 'login' ? 'ðŸ‘‹ Welcome back' : 'ðŸš€ Create account'}
               </h2>
-              <p className="text-xs text-notion-text-muted-light dark:text-notion-text-muted-dark">
-                {authMode === 'login' ? 'Enter credentials or click demo prefill below.' : 'Get started tracking with custom budgets.'}
+              <p className="text-xs text-emerald-400/70">
+                {authMode === 'login'
+                  ? 'Sign in to manage your finances.'
+                  : 'Start tracking your money smarter.'}
               </p>
             </div>
 
-            <form onSubmit={handleAuthSubmit} className="flex flex-col gap-4 text-xs">
+            <form onSubmit={handleAuthSubmit} className="flex flex-col gap-4">
               {authMode === 'register' && (
-                <div className="flex flex-col gap-1">
-                  <label className="font-semibold text-notion-text-muted-light">Full Name</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-emerald-300/80">Full Name</label>
                   <div className="relative">
-                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-notion-text-muted-light" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="Alex Johnson"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-gray-50 dark:bg-notion-bg-dark border border-notion-border-light dark:border-notion-border-dark rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-stripe-primary/50 text-notion-text-light dark:text-notion-text-dark"
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500/60" />
+                    <input type="text" required placeholder="Alex Johnson" value={name}
+                      onChange={e => setName(e.target.value)}
+                      className="w-full rounded-xl py-3 pl-10 pr-4 text-sm outline-none text-white placeholder-white/25 transition-all"
+                      style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}
                     />
                   </div>
                 </div>
               )}
 
-              <div className="flex flex-col gap-1">
-                <label className="font-semibold text-notion-text-muted-light">Email Address</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-emerald-300/80">Email Address</label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-notion-text-muted-light" />
-                  <input
-                    type="email"
-                    required
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-notion-bg-dark border border-notion-border-light dark:border-notion-border-dark rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-stripe-primary/50 text-notion-text-light dark:text-notion-text-dark"
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500/60" />
+                  <input type="email" required placeholder="you@example.com" value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="w-full rounded-xl py-3 pl-10 pr-4 text-sm outline-none text-white placeholder-white/25 transition-all"
+                    style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}
                   />
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between items-center">
-                  <label className="font-semibold text-notion-text-muted-light">Password</label>
+                  <label className="text-xs font-semibold text-emerald-300/80">Password</label>
                   {authMode === 'login' && (
-                    <button
-                      type="button"
-                      onClick={() => showToast('Forgot password? Log in with prefilled demo credentials.', 'info')}
-                      className="text-[10px] text-stripe-primary font-bold hover:underline"
-                    >
+                    <button type="button" onClick={() => showToast('Use demo credentials below.', 'info')}
+                      className="text-[10px] text-amber-400 font-bold hover:underline">
                       Forgot password?
                     </button>
                   )}
                 </div>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-notion-text-muted-light" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-notion-bg-dark border border-notion-border-light dark:border-notion-border-dark rounded-xl py-2.5 pl-10 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-stripe-primary/50 text-notion-text-light dark:text-notion-text-dark"
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500/60" />
+                  <input type={showPassword ? 'text' : 'password'} required placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full rounded-xl py-3 pl-10 pr-10 text-sm outline-none text-white placeholder-white/25 transition-all"
+                    style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-notion-text-muted-light hover:text-notion-text-light"
-                  >
+                  <button type="button" onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500/60 hover:text-white transition-colors">
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="w-full bg-stripe-primary hover:bg-stripe-primary/95 disabled:opacity-75 text-white font-bold py-2.5 rounded-xl shadow-premium flex items-center justify-center gap-2 text-xs md:text-sm mt-2 transition-all"
-              >
-                {authLoading ? 'Authorizing...' : authMode === 'login' ? 'Sign In' : 'Create Account'}
+              <button type="submit" disabled={authLoading}
+                className="w-full font-bold py-3 rounded-xl text-sm mt-1 flex items-center justify-center gap-2 transition-all disabled:opacity-60 hover:scale-[1.02] active:scale-[0.98]"
+                style={{ background: 'linear-gradient(135deg,#059669,#10b981,#f59e0b)', boxShadow: '0 0 30px rgba(16,185,129,0.4)' }}>
+                {authLoading ? 'Authorizing...' : authMode === 'login' ? 'Sign In to Vault' : 'Create My Vault'}
                 <ArrowRight className="h-4 w-4" />
               </button>
             </form>
 
-            {/* Prefix Demo helper */}
             {authMode === 'login' && (
-              <button
-                onClick={prefillDemoUser}
-                className="w-full py-2 bg-stripe-primary/5 dark:bg-stripe-primary/10 hover:bg-stripe-primary/10 border border-stripe-primary/20 hover:border-stripe-primary/30 rounded-xl font-bold text-stripe-primary flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Sparkles className="h-3.5 w-3.5" /> Prefill Demo User
+              <button onClick={prefillDemoUser}
+                className="w-full py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+                style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b' }}>
+                <Sparkles className="h-4 w-4" /> Use Demo Account
               </button>
             )}
 
-            {/* Navigation toggle link */}
-            <div className="text-center text-[11px] text-notion-text-muted-light dark:text-notion-text-muted-dark mt-1 font-medium">
-              {authMode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-              <button
-                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-                className="text-stripe-primary font-bold hover:underline"
-              >
-                {authMode === 'login' ? 'Create one now' : 'Sign in'}
+            <p className="text-center text-[11px] text-white/40 mt-1">
+              {authMode === 'login' ? "No account? " : 'Have an account? '}
+              <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+                className="text-emerald-400 font-bold hover:underline">
+                {authMode === 'login' ? 'Create one free' : 'Sign in'}
               </button>
-            </div>
+            </p>
           </div>
         </div>
       </div>
     );
   }
 
-  // Authenticated View Dashboard layout
+  /* â”€â”€ Authenticated Dashboard â”€â”€ */
   return (
-    <div className="min-h-screen bg-[#030208] flex flex-col md:flex-row text-notion-text-dark font-sans transition-colors duration-300 relative overflow-hidden">
-      
-      {/* Dynamic 3D Cosmic Space Solar System Parallax Backdrop (z-0) */}
-      <div 
-        className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none transition-transform duration-300 ease-out scale-110"
-        style={{
-          transform: `perspective(1200px) rotateX(${mousePos.y * -8}deg) rotateY(${mousePos.x * 8}deg)`,
-        }}
-      >
-        {/* Base Solar System Image (from shared images.webp) */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center opacity-45 mix-blend-screen"
-          style={{
-            backgroundImage: "url('/solar_system.webp')",
-          }}
-        />
-        {/* Dark space blend overlay */}
-        <div className="absolute inset-0 bg-[#030208]/70 mix-blend-multiply" />
-
-        {/* Nebula Cosmic Dust */}
-        <div className="absolute top-[-15%] left-[-10%] w-[400px] h-[400px] md:w-[550px] md:h-[550px] rounded-full bg-gradient-to-tr from-[#635bff]/20 to-[#8b5cf6]/14 blur-[100px] animate-float-blob" />
-        <div className="absolute bottom-[5%] right-[-10%] w-[450px] h-[450px] md:w-[650px] md:h-[650px] rounded-full bg-gradient-to-br from-[#00d4b2]/15 to-[#635bff]/18 blur-[110px] animate-float-blob-reverse" />
-
-        {/* Central Sun in Parallax */}
-        <div 
-          className="absolute top-[50%] left-[50%] w-32 h-32 rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-300 blur-[2px] shadow-[0_0_80px_25px_rgba(245,158,11,0.6)] animate-pulse transition-transform duration-500 ease-out"
-          style={{
-            transform: `translate3d(${mousePos.x * -12}px, ${mousePos.y * -12}px, 0) translate(-50%, -50%)`,
-          }}
-        />
-
-        {/* Concentric 3D Orbital Planes */}
-        <div className="solar-orbit solar-orbit-1" />
-        <div className="solar-orbit solar-orbit-2" />
-        <div className="solar-orbit solar-orbit-3" />
-        <div className="solar-orbit solar-orbit-4" />
-        <div className="asteroid-belt" />
-        <div className="solar-orbit solar-orbit-6" />
-        <div className="solar-orbit solar-orbit-7" />
-        <div className="solar-orbit solar-orbit-8" />
-
-        {/* Planets aligned on their orbits with independent 3D parallax offsets */}
-        {/* 1. Mercury */}
-        <div 
-          className="absolute top-[48%] left-[45%] w-2.5 h-2.5 rounded-full bg-gray-400 shadow-sm animate-pulse transition-transform duration-500 ease-out"
-          style={{ transform: `translate3d(${mousePos.x * -5}px, ${mousePos.y * -5}px, 10px)` }}
-        />
-        {/* 2. Venus */}
-        <div 
-          className="absolute top-[45%] left-[41%] w-4.5 h-4.5 rounded-full bg-gradient-to-tr from-amber-600 to-orange-400 shadow-sm animate-float-blob transition-transform duration-500 ease-out"
-          style={{ transform: `translate3d(${mousePos.x * -2}px, ${mousePos.y * -2}px, 20px)` }}
-        />
-        {/* 3. Earth */}
-        <div 
-          className="absolute top-[41%] left-[36%] w-5.5 h-5.5 rounded-full bg-gradient-to-tr from-blue-600 to-emerald-400 shadow-md animate-float-blob-reverse transition-transform duration-500 ease-out"
-          style={{ transform: `translate3d(${mousePos.x * 3}px, ${mousePos.y * 3}px, 30px)` }}
-        />
-        {/* 4. Mars */}
-        <div 
-          className="absolute top-[38%] left-[32%] w-4 h-4 rounded-full bg-gradient-to-tr from-red-600 to-orange-500 shadow-sm animate-float-blob transition-transform duration-500 ease-out"
-          style={{ transform: `translate3d(${mousePos.x * 7}px, ${mousePos.y * 7}px, 40px)` }}
-        />
-        {/* 5. Jupiter */}
-        <div 
-          className="absolute top-[28%] left-[25%] w-14 h-14 rounded-full bg-gradient-to-tr from-amber-800 via-orange-600 to-yellow-300 shadow-[0_0_20px_rgba(245,158,11,0.2)] animate-float-blob transition-transform duration-500 ease-out"
-          style={{ transform: `translate3d(${mousePos.x * 12}px, ${mousePos.y * 12}px, 50px)` }}
-        />
-        {/* 6. Saturn with 3D Rings */}
-        <div 
-          className="absolute top-[18%] left-[15%] w-18 h-18 saturn-container animate-float-blob-reverse transition-transform duration-500 ease-out"
-          style={{ transform: `translate3d(${mousePos.x * 18}px, ${mousePos.y * 18}px, 60px)` }}
-        >
-          <div className="saturn-globe" />
-          <div className="saturn-ring" />
-        </div>
-        {/* 7. Uranus */}
-        <div 
-          className="absolute top-[8%] left-[8%] w-12 h-12 cosmic-planet-cyan animate-float-blob transition-transform duration-500 ease-out"
-          style={{ transform: `translate3d(${mousePos.x * 24}px, ${mousePos.y * 24}px, 70px)` }}
-        />
-        {/* 8. Neptune */}
-        <div 
-          className="absolute top-[2%] left-[3%] w-10 h-10 rounded-full bg-gradient-to-tr from-blue-900 to-indigo-600 shadow-md animate-float-blob-reverse transition-transform duration-500 ease-out"
-          style={{ transform: `translate3d(${mousePos.x * 30}px, ${mousePos.y * 30}px, 80px)` }}
-        />
-
-        {/* Shooting Comets with delays */}
-        <div className="shooting-comet top-[15%] right-[25%]" />
-        <div className="shooting-comet top-[40%] right-[10%]" style={{ animationDelay: '5s' }} />
-        <div className="shooting-comet top-[65%] right-[30%]" style={{ animationDelay: '9s' }} />
-      </div>
-
-      {/* Main Page Content (relative z-10 for explicit rendering stacking) */}
+    <div className="min-h-screen flex flex-col md:flex-row text-white font-sans relative overflow-hidden">
+      <MoneyBackground mouseX={mousePos.x} mouseY={mousePos.y} />
       <div className="relative z-10 flex flex-col md:flex-row w-full min-h-screen">
-        {/* Navigation Side Panel */}
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-        
-        {/* Active Tab main content viewport pane */}
-        <main className="flex-grow overflow-y-auto h-auto md:h-screen backdrop-blur-[2px]">
-          {activeTab === 'dashboard' && <Dashboard />}
+        <main className="flex-grow overflow-y-auto h-auto md:h-screen backdrop-blur-[1px]">
+          {activeTab === 'dashboard'    && <Dashboard />}
           {activeTab === 'transactions' && <Transactions />}
-          {activeTab === 'budgets' && <Budgets />}
-          {activeTab === 'reports' && <Reports />}
-          {activeTab === 'ai-coach' && <AICoach />}
-          {activeTab === 'settings' && <Settings />}
+          {activeTab === 'budgets'      && <Budgets />}
+          {activeTab === 'reports'      && <Reports />}
+          {activeTab === 'ai-coach'     && <AICoach />}
+          {activeTab === 'settings'     && <Settings />}
         </main>
       </div>
     </div>
